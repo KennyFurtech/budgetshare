@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BudgetShare</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+      overflow-x: hidden;
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+    .screen { display: none; min-height: 100vh; padding: 20px; }
+    .screen.active { display: block; animation: fadeIn 0.5s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .header { text-align: center; color: white; margin-bottom: 40px; animation: slideDown 0.8s ease-out; }
+    @keyframes slideDown { from { transform: translateY(-50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: none;
+      border-radius: 999px;
+      padding: 12px 18px;
+      cursor: pointer;
+      color: #fff;
+      background: linear-gradient(135deg, rgba(255,255,255,0.22), rgba(255,255,255,0.12));
+      backdrop-filter: blur(16px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+      transition: all 0.25s ease;
+      font-weight: 600;
+    }
+    .theme-toggle:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 14px 34px rgba(0,0,0,0.22);
+    }
+    .theme-toggle .theme-icon {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      font-size: 15px;
+    }
+    body.dark-mode .theme-toggle {
+      color: #eaf0ff;
+      background: linear-gradient(135deg, rgba(27,31,53,0.8), rgba(58,64,99,0.6));
+    }
+    body.dark-mode .theme-toggle .theme-icon {
+      background: rgba(255,255,255,0.08);
+    }
+
+    .project-create, .projects-list, .stats-panel, .add-expense, .expenses-list, .chart-container {
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(20px);
+      border-radius: 25px;
+      padding: 30px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    }
+    .project-create { max-width: 600px; margin: 0 auto; }
+    .projects-list { margin-bottom: 30px; }
+
+    .project-card {
+      background: white;
+      border-radius: 20px;
+      padding: 25px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      transition: all 0.3s ease;
+    }
+    .project-card:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+    .project-card.active-project { border: 3px solid #667eea; background: linear-gradient(135deg, #f0f4ff 0%, #e8e4f8 100%); }
+
+    .btn {
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 15px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      width: 100%;
+      margin-bottom: 15px;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4); }
+    .btn-secondary { background: linear-gradient(45deg, #6c757d, #5a6268); }
+    .back-btn { background: linear-gradient(45deg, #ff6b6b, #ee5a52); margin-bottom: 20px; width: auto; padding: 12px 24px; }
+
+    .dashboard { display: grid; grid-template-columns: 300px 1fr; gap: 30px; margin-bottom: 30px; }
+    .main-content { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+    .stats-panel, .add-expense, .expenses-list, .chart-container { min-height: 100px; }
+
+    .stat-item { margin-bottom: 18px; }
+    .stat-value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+
+    .form-group { margin-bottom: 25px; }
+    label { display: block; margin-bottom: 8px; font-weight: 600; color: #555; }
+    input, select, textarea {
+      width: 100%;
+      padding: 15px;
+      border: 2px solid #e1e5e9;
+      border-radius: 15px;
+      font-size: 16px;
+      transition: all 0.3s ease;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+    }
+    textarea { resize: vertical; }
+
+    .member-tag {
+      display: inline-block;
+      background: #eef2ff;
+      color: #4b5bdc;
+      padding: 8px 12px;
+      border-radius: 999px;
+      margin: 4px 6px 4px 0;
+      font-size: 14px;
+    }
+
+    .expense-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .expense-item:last-child { border-bottom: none; }
+    .expense-amount { font-weight: 700; color: #e74c3c; font-size: 18px; }
+
+    .dark-mode { background: #1a1a2e; color: #e0e0e0; }
+    .dark-mode .stats-panel,
+    .dark-mode .add-expense,
+    .dark-mode .expenses-list,
+    .dark-mode .chart-container,
+    .dark-mode .project-create,
+    .dark-mode .projects-list,
+    .dark-mode .project-card {
+      background: rgba(40,40,60,0.95);
+      color: #e0e0e0;
+    }
+    .dark-mode input, .dark-mode select, .dark-mode textarea {
+      background: #2a2a3a;
+      color: #e0e0e0;
+      border-color: #444;
+    }
+    .dark-mode .project-card.active-project { background: linear-gradient(135deg, #24263b 0%, #2d2340 100%); }
+    .dark-mode label { color: #cfcfe8; }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 960px) {
+      .dashboard { grid-template-columns: 1fr; }
+      .main-content { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 768px) {
+      .screen { padding: 12px; }
+      .project-create, .projects-list, .stats-panel, .add-expense, .expenses-list, .chart-container {
+        padding: 20px;
+        border-radius: 18px;
+      }
+      .header { margin-bottom: 24px; }
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .top-actions .btn { width: auto; margin-bottom: 0; }
+
+    .auth-wrap { max-width: 520px; margin: 0 auto; }
+    .section-title { margin-bottom: 16px; }
+    .small-muted { opacity: 0.7; font-size: 14px; }
+    .empty-state { text-align: center; opacity: 0.55; padding: 40px 0; }
+    .header-line { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    .header-line h1 { margin:0; }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Переключить тему">
+    <span class="theme-icon">☀</span>
+    <span class="theme-text">Светлая</span>
+  </button>
+
+  <div id="screen-auth" class="screen active">
+    <div class="container">
+      <div class="header">
+        <h1>BudgetShare</h1>
+        <p>Вход и регистрация</p>
+      </div>
+
+      <div class="project-create auth-wrap">
+        <h2 class="section-title">Регистрация</h2>
+        <div class="form-group">
+          <label>Имя</label>
+          <input type="text" id="regFullName" placeholder="Иван Иванов">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="regEmail" placeholder="example@mail.com">
+        </div>
+        <div class="form-group">
+          <label>Пароль</label>
+          <input type="password" id="regPassword" placeholder="Придумай пароль">
+        </div>
+        <button class="btn" onclick="registerUser()">Зарегистрироваться</button>
+
+        <hr style="margin: 25px 0; opacity: 0.25;">
+
+        <h2 class="section-title">Вход</h2>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="loginEmail" placeholder="example@mail.com">
+        </div>
+        <div class="form-group">
+          <label>Пароль</label>
+          <input type="password" id="loginPassword" placeholder="Пароль">
+        </div>
+        <button class="btn" onclick="loginUser()">Войти</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-create" class="screen">
+    <div class="container">
+      <div class="header">
+        <h1>BudgetShare</h1>
+        <p>Твои проекты</p>
+        <div class="top-actions">
+          <button class="btn" style="width:auto;" onclick="showCreateProjectForm()">Создать проект</button>
+          <button class="btn btn-secondary" style="width:auto;" onclick="logout()">Выйти</button>
+        </div>
+      </div>
+
+      <div class="projects-list">
+        <div class="header-line">
+          <h2>Список проектов</h2>
+          <span class="small-muted" id="userInfo"></span>
+        </div>
+        <div id="projectsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-create-form" class="screen">
+    <div class="container">
+      <div class="header">
+        <h1>BudgetShare</h1>
+        <p>Создание проекта</p>
+      </div>
+
+      <div class="project-create">
+        <form id="projectForm">
+          <div class="form-group">
+            <label>Название проекта</label>
+            <input type="text" id="projectName" placeholder="Например: Поездка в Сочи" required>
+          </div>
+          <div class="form-group">
+            <label>Бюджет</label>
+            <input type="number" id="projectBudget" placeholder="15000" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>Участники</label>
+            <input type="text" id="projectMembers" placeholder="Анна, Игорь, Олег" required>
+          </div>
+          <div class="form-group">
+            <label>Описание</label>
+            <textarea id="projectDescription" rows="3" placeholder="Краткое описание проекта"></textarea>
+          </div>
+          <button type="submit" class="btn">Сохранить проект</button>
+          <button type="button" class="btn btn-secondary" onclick="showProjectsList()">Назад</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-dashboard" class="screen">
+    <div class="container">
+      <div class="header">
+        <h1 id="dashboardTitle">BudgetShare</h1>
+        <p>Панель проекта</p>
+        <div class="top-actions">
+          <button class="btn back-btn" style="width:auto;" onclick="showProjectsList()">Назад к проектам</button>
+          <button class="btn btn-secondary" style="width:auto;" onclick="logout()">Выйти</button>
+        </div>
+      </div>
+
+      <div class="dashboard">
+        <div class="stats-panel">
+          <div class="stat-item">
+            <div style="font-size:14px; opacity:0.8;">Общий бюджет</div>
+            <div class="stat-value" id="totalBudget">0</div>
+          </div>
+          <div class="stat-item">
+            <div style="font-size:14px; opacity:0.8;">Потрачено</div>
+            <div class="stat-value" id="totalSpent">0</div>
+          </div>
+          <div class="stat-item">
+            <div style="font-size:14px; opacity:0.8;">Баланс</div>
+            <div class="stat-value" id="balance" style="color:#27ae60;">0</div>
+          </div>
+          <div id="membersSection">
+            <div style="font-size:14px; opacity:0.8; margin-bottom:10px;">Участники</div>
+            <div id="membersList"></div>
+          </div>
+        </div>
+
+        <div class="main-content">
+          <div class="add-expense">
+            <h3 class="section-title">Добавить расход</h3>
+            <form id="expenseForm">
+              <div class="form-group">
+                <label>Категория</label>
+                <select id="category">
+                  <option value="Продукты">Продукты</option>
+                  <option value="Транспорт">Транспорт</option>
+                  <option value="Развлечения">Развлечения</option>
+                  <option value="Жильё">Жильё</option>
+                  <option value="Связь">Связь</option>
+                  <option value="Другое">Другое</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Сумма</label>
+                <input type="number" id="amount" placeholder="0" min="0" step="0.01" required>
+              </div>
+              <div class="form-group">
+                <label>Описание</label>
+                <input type="text" id="description" placeholder="Например: Супермаркет" required>
+              </div>
+              <div class="form-group">
+                <label>Кто оплатил</label>
+                <select id="member"></select>
+              </div>
+              <button type="submit" class="btn">Добавить расход</button>
+            </form>
+          </div>
+
+          <div class="expenses-list" id="expensesList">
+            <h3 class="section-title">Расходы</h3>
+            <div class="empty-state">Пока нет расходов</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-container">
+        <h3 class="section-title">Диаграмма расходов</h3>
+        <div style="position:relative; height:350px; width:100%;">
+          <canvas id="expensesChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = '';
+    let currentUser = null;
+    let currentProjectId = null;
+    let currentProjectExpenses = [];
+    let projectsCache = [];
+    let chart = null;
+
+    function showScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+    }
+
+    function saveAuth(data) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      currentUser = data.user;
+      document.getElementById('userInfo').textContent = data.user.fullName + ' (' + data.user.email + ')';
+    }
+
+    function getToken() {
+      return localStorage.getItem('token');
+    }
+
+    function getHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken()
+      };
+    }
+
+    async function registerUser() {
+      const fullName = document.getElementById('regFullName').value.trim();
+      const email = document.getElementById('regEmail').value.trim();
+      const password = document.getElementById('regPassword').value;
+
+      if (!fullName || !email || !password) {
+        alert('Заполни все поля регистрации');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName, email, password })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.message || 'Ошибка регистрации');
+        return;
+      }
+
+      saveAuth(data);
+      openApp();
+    }
+
+    async function loginUser() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+
+      if (!email || !password) {
+        alert('Заполни email и пароль');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.message || 'Ошибка входа');
+        return;
+      }
+
+      saveAuth(data);
+      openApp();
+    }
+
+    function openApp() {
+      document.getElementById('screen-auth').classList.add('hidden');
+      showScreen('screen-create');
+      loadProjects();
+    }
+
+    function logout() {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      currentUser = null;
+      currentProjectId = null;
+      currentProjectExpenses = [];
+      projectsCache = [];
+      document.getElementById('screen-auth').classList.remove('hidden');
+      showScreen('screen-auth');
+    }
+
+    async function loadProjects() {
+      const response = await fetch(`${API_URL}/api/projects`, { headers: getHeaders() });
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.message || 'Ошибка загрузки проектов');
+        return;
+      }
+
+      projectsCache = data;
+      renderProjectsList();
+
+      if (projectsCache.length > 0) {
+        currentProjectId = projectsCache[0].id;
+        await loadCurrentProject();
+      } else {
+        currentProjectId = null;
+        document.getElementById('dashboardTitle').textContent = 'BudgetShare';
+        document.getElementById('totalBudget').textContent = '0';
+        document.getElementById('totalSpent').textContent = '0';
+        document.getElementById('balance').textContent = '0';
+        document.getElementById('membersList').innerHTML = '';
+        document.getElementById('expensesList').innerHTML = '<h3 class="section-title">Расходы</h3><div class="empty-state">Пока нет расходов</div>';
+      }
+    }
+
+    function renderProjectsList() {
+      const container = document.getElementById('projectsList');
+
+      if (!projectsCache.length) {
+        container.innerHTML = '<div class="empty-state">Проектов пока нет</div>';
+        return;
+      }
+
+      container.innerHTML = projectsCache.map(project => `
+        <div class="project-card ${currentProjectId === project.id ? 'active-project' : ''}">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap;">
+            <div onclick="loadProject(${project.id})" style="flex:1; cursor:pointer;">
+              <h3>${escapeHtml(project.name)}</h3>
+              <p style="color:#666; margin:5px 0;">Бюджет: ${Number(project.budget).toLocaleString()}</p>
+              <p style="color:#666; font-size:14px;">Участники: ${project.members.map(escapeHtml).join(', ')}</p>
+            </div>
+            <button class="btn btn-secondary" style="width:auto; margin:0;" onclick="deleteProject(${project.id}, event)">Удалить</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function createProjectServer() {
+      const name = document.getElementById('projectName').value.trim();
+      const budget = parseFloat(document.getElementById('projectBudget').value);
+      const membersText = document.getElementById('projectMembers').value.trim();
+      const description = document.getElementById('projectDescription').value.trim();
+      const members = membersText.split(',').map(m => m.trim()).filter(Boolean);
+
+      if (!name || !budget || members.length === 0) {
+        alert('Заполни название, бюджет и участников');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/projects`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ name, budget, members, description })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.message || 'Ошибка создания проекта');
+        return;
+      }
+
+      document.getElementById('projectForm').reset();
+      await loadProjects();
+      currentProjectId = data.id;
+      showScreen('screen-dashboard');
+      renderProjectsList();
+      await loadCurrentProject();
+    }
+
+    async function deleteProject(projectId, event) {
+      if (event) event.stopPropagation();
+
+      if (!confirm('Удалить проект вместе со всей историей расходов?')) {
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/projects/${projectId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.message || 'Ошибка удаления проекта');
+        return;
+      }
+
+      projectsCache = projectsCache.filter(p => p.id !== projectId);
+
+      if (currentProjectId === projectId) {
+        currentProjectId = projectsCache.length ? projectsCache[0].id : null;
+      }
+
+      renderProjectsList();
+
+      if (currentProjectId) {
+        await loadCurrentProject();
+        showScreen('screen-dashboard');
+      } else {
+        document.getElementById('dashboardTitle').textContent = 'BudgetShare';
+        document.getElementById('totalBudget').textContent = '0';
+        document.getElementById('totalSpent').textContent = '0';
+        document.getElementById('balance').textContent = '0';
+        document.getElementById('membersList').innerHTML = '';
+        document.getElementById('expensesList').innerHTML = '<h3 class="section-title">Расходы</h3><div class="empty-state">Пока нет расходов</div>';
+        showScreen('screen-create');
+      }
+    }
+
+    async function loadProject(projectId) {
+      currentProjectId = projectId;
+      showScreen('screen-dashboard');
+      renderProjectsList();
+      await loadCurrentProject();
+    }
+
+    async function loadCurrentProject() {
+      const project = projectsCache.find(p => p.id === currentProjectId);
+      if (!project) return;
+
+      document.getElementById('dashboardTitle').textContent = project.name;
+
+      const response = await fetch(`${API_URL}/api/projects/${currentProjectId}/expenses`, { headers: getHeaders() });
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.message || 'Ошибка загрузки расходов');
+        return;
+      }
+
+      currentProjectExpenses = data;
+      updateStats(project);
+      renderMembers(project.members);
+      renderExpenses();
+      updateChart();
+      populateMemberSelect(project.members);
+    }
+
+    function renderMembers(members) {
+      const container = document.getElementById('membersList');
+      container.innerHTML = members.map(member => `<span class="member-tag">${escapeHtml(member)}</span>`).join('');
+    }
+
+    function populateMemberSelect(members) {
+      const select = document.getElementById('member');
+      select.innerHTML = members.map(member => `<option value="${escapeHtml(member)}">${escapeHtml(member)}</option>`).join('');
+    }
+
+    async function addExpenseServer(e) {
+      e.preventDefault();
+
+      if (!currentProjectId) {
+        alert('Сначала выбери проект');
+        return;
+      }
+
+      const category = document.getElementById('category').value;
+      const amount = parseFloat(document.getElementById('amount').value);
+      const description = document.getElementById('description').value.trim();
+      const memberName = document.getElementById('member').value;
+
+      if (!category || !amount || !description || !memberName) {
+        alert('Заполни все поля расхода');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/projects/${currentProjectId}/expenses`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ category, amount, description, memberName })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.message || 'Ошибка добавления расхода');
+        return;
+      }
+
+      document.getElementById('expenseForm').reset();
+      await refreshProjectAfterChange();
+    }
+
+    async function refreshProjectAfterChange() {
+      await loadProjects();
+
+      const project = projectsCache.find(p => p.id === currentProjectId);
+      if (!project) return;
+
+      const response = await fetch(`${API_URL}/api/projects/${currentProjectId}/expenses`, {
+        headers: getHeaders()
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.message || 'Ошибка обновления проекта');
+        return;
+      }
+
+      currentProjectExpenses = data;
+      updateStats(project);
+      renderMembers(project.members);
+      renderExpenses();
+      updateChart();
+      populateMemberSelect(project.members);
+    }
+
+    function updateStats(project) {
+      const totalSpent = currentProjectExpenses.reduce((sum, expense) => sum + Number(expense.Amount), 0);
+      const balance = Number(project.budget) - totalSpent;
+      document.getElementById('totalBudget').textContent = Number(project.budget).toLocaleString();
+      document.getElementById('totalSpent').textContent = totalSpent.toLocaleString();
+      document.getElementById('balance').textContent = balance.toLocaleString();
+      document.getElementById('balance').style.color = balance >= 0 ? '#27ae60' : '#e74c3c';
+    }
+
+    function renderExpenses() {
+      const container = document.getElementById('expensesList');
+
+      if (!currentProjectExpenses.length) {
+        container.innerHTML = '<h3 class="section-title">Расходы</h3><div class="empty-state">Пока нет расходов</div>';
+        return;
+      }
+
+      const listHTML = currentProjectExpenses.map(expense => `
+        <div class="expense-item">
+          <div class="expense-info">
+            <h4>${escapeHtml(expense.Description)}</h4>
+            <div style="font-size:14px; opacity:0.7;">${escapeHtml(expense.Category)} • ${escapeHtml(expense.MemberName)} • ${new Date(expense.ExpenseDate).toLocaleDateString('ru-RU')}</div>
+          </div>
+          <div class="expense-amount">-${Number(expense.Amount).toLocaleString()}</div>
+        </div>
+      `).join('');
+
+      container.innerHTML = `<h3 class="section-title">Расходы</h3>${listHTML}`;
+    }
+
+    function initChart() {
+      const ctx = document.getElementById('expensesChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: [],
+          datasets: [{
+            data: [],
+            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40']
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                padding: 20,
+                usePointStyle: true
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function updateChart() {
+      if (!chart) initChart();
+      const categoryTotals = {};
+      currentProjectExpenses.forEach(expense => {
+        const key = expense.Category;
+        categoryTotals[key] = (categoryTotals[key] || 0) + Number(expense.Amount);
+      });
+      chart.data.labels = Object.keys(categoryTotals);
+      chart.data.datasets[0].data = Object.values(categoryTotals);
+      chart.update('none');
+    }
+
+    function toggleTheme() {
+      document.body.classList.toggle('dark-mode');
+
+      const isDark = document.body.classList.contains('dark-mode');
+      const btn = document.getElementById('themeToggle');
+      const icon = btn.querySelector('.theme-icon');
+      const text = btn.querySelector('.theme-text');
+
+      if (isDark) {
+        icon.textContent = '🌙';
+        text.textContent = 'Тёмная';
+        localStorage.setItem('theme', 'dark');
+      } else {
+        icon.textContent = '☀';
+        text.textContent = 'Светлая';
+        localStorage.setItem('theme', 'light');
+      }
+    }
+
+    function showProjectsList() {
+      showScreen('screen-create');
+      renderProjectsList();
+    }
+
+    function showCreateProjectForm() {
+      showScreen('screen-create-form');
+      document.getElementById('projectForm').reset();
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('\"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    document.getElementById('projectForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      createProjectServer();
+    });
+
+    document.getElementById('expenseForm').addEventListener('submit', addExpenseServer);
+
+    document.addEventListener('DOMContentLoaded', async function() {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+        const btn = document.getElementById('themeToggle');
+        if (btn) {
+          btn.querySelector('.theme-icon').textContent = '🌙';
+          btn.querySelector('.theme-text').textContent = 'Тёмная';
+        }
+      }
+
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
+
+      if (token && user) {
+        currentUser = JSON.parse(user);
+        document.getElementById('userInfo').textContent = currentUser.fullName + ' (' + currentUser.email + ')';
+        document.getElementById('screen-auth').classList.add('hidden');
+        showScreen('screen-create');
+        await loadProjects();
+      } else {
+        showScreen('screen-auth');
+      }
+    });
+  </script>
+</body>
+</html>
